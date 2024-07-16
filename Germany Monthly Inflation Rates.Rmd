@@ -1,0 +1,265 @@
+---
+title: "Monthly Inflation Rates of Germany"
+author: "Gian Carlo Sanfuego"
+date: "2024-06-25"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+In this project, we will deal with a topic that affects us all on a daily basis. It is the inflation rate. By definition, the inflation rate is a measure of change in purchasing power. Macro economists and finance professionals love to work with inflation rates. Hence the sort of data is very often used in time series analysis. But on top of that, it is also important to know how the inflation moves, since it directly affects investment opportunities. Prices of stocks, property, precious metals or oil are at least indirectly affected by the rate of inflation.
+
+This dataset deals with the monthly inflation rates of Germany from 2008 to October 2017. So it is almost ten years of monthly data. The source of the data is https://www.statbureau.org/en/germany/inflation-tables, which has a rich database of inflation rates available for many countries. We are using a month on month inflation rate here. Now, this is somewhat unusual because when you read the news generally the year on year inflation rate is used. To further understand the data, let's now start setting our directory.
+
+```{r}
+# Set working directory
+#getwd()
+#setwd('D:\Desktop\DATA ANALYSIS\R\TIME SERIES ANALYSIS AND FORECASTING IN R\PROJECT 2 - SEASONAL DATA')
+```
+
+```{r}
+# install and load readxl package to import the data in xlsx format
+#install.packages("readxl")
+library(readxl)
+```
+
+After installing and loading the necessary package, let us now read the excel file for this analysis in the directory that we set.
+
+```{r}
+# Read the excel file
+ger_inflation <- read_excel("ger_inflation.xlsx", col_names = FALSE)
+```
+
+To further understand the data, lets see the what's in it.
+
+```{r}
+# Display the data to understand its structure
+print(ger_inflation)
+str(ger_inflation)
+```
+
+As you can see, the first column of this dataset is a year variable. And the dataset is in tibble/dataframe format. Also, we can observe that all the variables are in character. Another thing that i observed here, is that the dataset is in wide format, meaning to say that rows represent the values in a single year, while columns represents all the months starting from january to december, that's the reason why we have 12 variables, excluded the year. To convert it into a time series class, we have remove the year variable, change the format to numeric and then make it a vector first.
+
+## Pre-processing
+
+```{r}
+years <- ger_inflation[[1]]
+inflation_data <- ger_inflation[, -1]
+inflation_data
+```
+
+Let's now convert all variables at once to numeric using apply function.
+
+```{r}
+# Convert the character data to numeric
+inflation_data <- apply(inflation_data, 2, as.numeric)
+inflation_data
+```
+
+In R, time series functions typically operate on columns rather than rows. This is because time series data conventionally has time indices (dates, months, etc.) as rows, and observations (variables, measurements) as columns. Since our data is structured with time indices in rows, we need to transpose our data to align with this convention before applying time series analysis functions effectively.
+
+```{r}
+# Reshape the data to a vector for time series conversion
+inflation_vector <- as.vector(t(inflation_data))
+inflation_vector
+```
+
+We are done with our pre-processing steps. Now let's try to plot the data to have an overview of what the time series dataset looks like, and to see what model is applicable to it.
+
+```{r}
+plot.ts(inflation_vector)
+```
+
+This initial plot tells us a lot about the data. With this knowledge, we can select a suitable model. We know what the problems could arise and know how to interpret results. First and foremost, this dataset has no trend. The mean stays constant over the whole series. That will surely affect the output of Arima or exponential smoothing methods. Second, this dataset is seasonal. After all, it is a monthly rate and this is also reflected on the plot where there are several observational time points over one year.
+Thirdly, this data set contains negative values. As you can see, the line goes towards both sides of this zero y mark. Negative values are critical in exponential smoothing, since they prohibit multiplicative exponential smoothing models. That means we are left with additive models only. Lastly, the up and down movement, amplitude seems stable over the series. Thus the variance is stable, which might affect the D parameter in an Arima model. Stable variance means that there is less differencing required, hence the low D, a low middle parameter in Arima.
+
+So now that we have the data in R, we need to convert it to a time series object because functions and models we are using in time series analysis and forecasting requrie this format. the start argument specifies the start time for the time series. While the frequency argument specifies the frequency of the observations per year. Here, 12 indicates monthly data, meaning our time series has observations for each month (January to December).
+
+```{r}
+# Create a time series object starting from January 2008
+inflation_ts <- ts(inflation_vector, start = 2008, frequency = 12)
+
+# Display the time series object
+print(inflation_ts)
+```
+
+```{r}
+# Plot the time series
+plot(inflation_ts)
+```
+
+And indeed, this whole thing seems to work. The x axis looks good and we have a line chart which demonstrates that we got the Time series running.
+
+## Modeling
+# SEASONAL DECOMPOSITION
+
+Let'start this with seasonal decomposition. But what does seasonal decomposition do? With seasonal decomposition, what this do is basically to divide the data into trend seasonality and remainder, which should be random.You either can choose a method which adds these three components up, or you can opt for a multiplicative model which multiplies them. In general, if this seasonal component stays constant over several cycles, it is best to opt for an additive decomposition. The strength of the method, however, is its ease of use and its simplicity.
+
+```{r}
+decompose(inflation_ts)
+```
+
+If we run decompose on our German inflation dataset, we get the whole numbers for each of the three components. The data was divided in two. Note the NA's at the beginning and the end of the time series due to the nature of the calculations. These observations are not available, which might cause problems when doing further analysis with this data. Now we can simply plot the whole thing to make it more visual. We just need to wrap the decompose function in a plot command and we are good to go.
+
+```{r}
+plot(decompose(inflation_ts))
+```
+
+This is the data we previously got with the decompose function. The first one on top shows the original dataset. Then we get the trend component. Next we see how the seasonal part looks and the rest is white noise. This is interesting info since it tells me that there is no trend in the series. The whole trend component makes a half circular move from 2009 to 2015 and starts to rise again in late 2016. But overall there is no clear trend direction visible.
+
+The interesting part here is the seasonal component. One seasonal cycle is calculated and used for all years. The series starts with a low January inflation, which is instantly compensated for in February. Overall, this pattern makes perfect sense since the summer holidays as well as the Christmas period are times of great consumption. Hence, it makes sense for the retailers to adjust the prices.
+
+You can also use some new versions of decomposition methods such as X11, Seats and STL method. The strong point with these methods is that we can now get model values for all observations, meaning to say, no more noise. Furthermore, the models allow the seasonal part to be adjusted over time, unlike the standard decompose function where the seasonal part stays constant throughout the model. So let's take a look at such a method.
+
+```{r}
+# Remove NA values
+inflation_ts.nona <- na.omit(inflation_ts)
+```
+
+Removing first the NA will make the STL function work.
+
+```{r}
+# Load the forecast package to use the stl method
+library(forecast)
+plot(stl(inflation_ts.nona, s.window = 7))
+```
+
+So if we run this line, we can see that the seasonal patterns do change over time. The inflation amplitude gets wider towards the 2017 end of the series. With the change of the seasonal cycles, the patterns do not necessarily stay constant with this method. And this of course affects the trend part as well. The trend curve gets rounder overall, and the last part of the curve has a smaller amplitude than with a decompose function. This is due to the fact that the seasonal part was already increased, so this needs to be subtracted from the trend part.
+
+Now let's use STL decomposition for forecasting. 
+
+```{r}
+# stl forecasting
+plot(stlf(inflation_ts.nona, method = 'ets'))
+```
+
+As you can see, the forecasted intervals seem to be identical. The peaks and lows are at the same height in both years. We can compare this with a standard ETS forecast of the same length. Therefore, we simply get the plot of the forecast of ETS with an age of 24.
+
+```{r}
+# Comparison with a standard ets forecast
+plot(forecast(ets(inflation_ts), h = 24))
+```
+
+We can see that here the two intervals are the same again, but the amplitudes are slightly different than before. The December peaks are higher than the July ones, which is the opposite with the STL method. Although we used an ETS system for both forecasts with the STLF function, the forecast is a combined one.
+
+Whereas if we use ETS exponential smoothing on itself, the model is different. With the STLF function we get an ETS(A,N,N), which means additive season, no trend and no error or remainder. The remainder is handled by the STL part of the model with ETS on its own we get an A which is additive seasonality, no trend but an additive error. The underlying model for ETS, you can see in the headers of the plot, that way we can explain that the models do have some differences on the forecasting part.
+
+```{r}
+# Using autoplot
+library(ggplot2)
+autoplot(stlf(inflation_ts, method = 'ets'))
+```
+
+Like with most of the plots we are using here, we can as well use the auto plot function available in packages ggplot2 and forecast, which gives probably a slightly better visualization. Especially the background lines allow a more accurate estimation of the y axis values.
+
+# SEASONAL ARIMA
+
+Now there are basically two methods how to set up an Arima model in R, a manual method where you find out the parameters step by step by using ACF and Pacf plots and differencing the dataset if required.  But as you might imagine, the process complexity is a lot higher. But luckily for us there is also the automated method with the auto.arima() function which we owe to Rob Hindman and his forecast package.
+
+```{r}
+# Seasonal Arima (package forecast)
+auto.arima(inflation_ts, stepwise = T,
+           approximation = F, trace = T)
+
+# Assign it to an object
+inflation_ts.arima <- auto.arima(inflation_ts,
+                                 stepwise = T,
+                                 approximation = F,
+                                 trace = T)
+```
+
+According to the results, the best model is Arima(1,0,2)(0,1,1) of 12 months. That means for the non seasonal part, we have one order of autocorrelation, no differencing and two orders of moving averages. The seasonal part has one step of differencing and one order of moving average. Our M is 12. That means 12 observations per interval, which is a year. In this case, the corresponding coefficients for the model are available down here. Autoregressive coefficient one is -0.79. The moving average one is 0.778 and moving average two is 0.211. So these are the coefficients for the non seasonal part and the one coefficient for the seasonal moving average is -0.761. So the seasonal coefficients always have the prefix s for seasonal. The model indicators like info criteria are available at the bottom of the output, much like in a standard Arima model.
+
+The trace argument in the function list all alternative models that R tested for us, however, the best model with lowest AIC is the best model itself, so we will now proceed to our analysis. Just remember that the lower info criteria, the better.
+
+Now we can simply use the standard forecasting procedure to use this model for a forecast.
+
+```{r}
+# Assign it to an object
+inflation_ts.arima <- auto.arima(inflation_ts,
+                                 stepwise = T,
+                                 approximation = F,
+                                 trace = T)
+
+forec <- forecast(inflation_ts.arima)
+plot(forec)
+```
+
+As you can see, we get two seasonal cycles as the forecast period. The cycles are identical and they would stay like that even if you have 5 or 10 cycles. This is fundamentally a linear model type and there is no trend or something similar in the model. Hence there is no variation which could be used to alter the cycles over time. So as you can see, Arima is a viable option for a seasonal data set due to the auto.arima() function, it is fairly easy to calculate a suitable model. However, when you have a dataset like this, it is also advisable to compare against an exponential smoothing model like Holt-winters or an ETS model. Exponential smoothing models are generally an excellent alternative when it comes to seasonal datasets.
+
+Let's try it now with Exponential smoothing.
+
+## EXPONENTIAL SMOOTHING WITH ETS
+
+If we want to model this data set with the exponential smoothing system, there are two main ways in how to do this. The classic exponential smoothing method used for a seasonal data set is called Holt-winters seasonal method with a corresponding hw() function. The standard alternative to this method would be the ETS method with the ETS function. No matter which of these two systems you go for, the underlying principle is always the same. We will use the ETS() function because it is more efficient since it is auto generated.
+
+```{r}
+# Auto generated
+ets(inflation_ts)
+```
+
+The model is preset to automate it so there is nothing we need to adjust here. It is really easy to use it with the default settings, but nonetheless the results are generally quite good. The suggested model is essentially an additive, one without the trend. And that is pretty much what we already learned from seasonal decomposition. There is no trend in the data. Therefore, we have an N at the T component. The variations in the dataset are mainly due to additive seasonal patterns, hence the A at the end. Furthermore, due to the nature of this time series, it is not even possible to get a multiplicative model. Multiplicative does not work when you have negative or null values in your data. Therefore, this is even the only solution possible given the dataset. We get the corresponding smoothing parameters. Alpha for the error and gamma for the seasonality, which are both close to zero, indicating a model which takes even older data into account. We get standard additional info down here like the info criteria or the initial levels which are used to calculate the forecasts.
+
+```{r}
+# Forecast plot
+inflation_ts.ets <- ets(inflation_ts)
+plot(forecast(inflation_ts.ets, h = 60))
+```
+
+The seasonal patterns stay constant over the five years. By the way, the holt-winters forecast looks a bit more smooth as we can see here. As we initially discussed in this video, Holt-winters would be the alternative to this model since hw() allows a seasonal data set. The plot shows holt-winters of the same length. This automatically generates a forecast. Both models are based on an additive seasonality.
+
+```{r}
+# Comparison with seasonal Holt Winters model
+plot(hw(inflation_ts, h = 60))
+```
+
+## Model Evaluation
+
+Now since we have several models calculated, it is, of course, paramount to know which of the models is the best one. Of course, it is not a good idea to just use info criteria to compare different systems of models. Arima And exponential smoothing cannot be compared just with information criteria. The underlying statistics used to calculate the info criteria are different for both models systems. Therefore, we have to concentrate on prediction or forecast accuracy. Mean squared errors from forecast residuals have proven to be a measure of choice to compare Arima and exponential smoothing methods. This time, we will use the function tscv() function for time series cross validation.
+
+```{r}
+## Cross Validation of 2 models
+inflation_ts.ets = ets(inflation_ts)
+inflation_ts.arima = auto.arima(inflation_ts, 
+                             stepwise = T, 
+                             approximation = F, 
+                             trace = T)
+```
+
+Now, with our seasonal inflation data set, we used seasonal decomposition with stlf(), we used seasonal arima and we used ETS for exponential smoothing. The forecast with stlf() contained, also the ETS method. Therefore, if you compare ETS alone and stlf() with ETS, you will find that the errors are nearly the same. Therefore, we will focus on the comparison of a seasonal arima model and an ETS model for our Germany inflation dataset.
+
+For the tscv() function. You need the model and the dataset. I would recommend to set up a function for the model which is then easily fed into tscv() and you can generate the mean of the error rates to compare the models. Therefore it will be a three step process. Writing the function with the underlying model. Running the cross-validation and computing the error rate. So let's start with creating the two functions for the two models.
+
+```{r}
+forecastets = function(x, h) {
+  forecast(ets(x), h = h)
+}
+
+forecastarima = function(x, h) {
+  forecast(auto.arima(x), stepwise = T, approximation = F, h=h)
+}
+```
+
+Next we feed these models into the tscv() function from the package forecast.
+
+```{r}
+etserror = tsCV(inflation_ts, forecastets, h=1)
+arimaerror = tsCV(inflation_ts, forecastarima, h=1)
+```
+
+So these two lines will now generate the forecast errors for each of the observations step by step, and therefore it will take a while to compute all these measures depending on the length of your dataset or the capacity of your machine.
+
+```{r}
+mean(etserror^2, na.rm=TRUE)
+mean(arimaerror^2, na.rm=TRUE)
+```
+
+We have these two numbers down here, 0.0912 for the ETS model and 0.0795 for the Arima model. The better model is the one with the lower error rate, which is the Arima model in this case. Logically, with all of these error and accuracy indicators, you want to pick the lowest one.
+
+In this case we compared ETS and seasonal Arima on our German inflation data set and we found out that the Arima model is the better fit.
